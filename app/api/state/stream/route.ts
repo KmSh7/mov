@@ -19,18 +19,15 @@ export function broadcastState(state: object) {
       clients.delete(controller);
     }
   });
-  console.log('[STATE API] SSE: Broadcast to', clients.size, 'clients');
 }
 
 // GET /api/state/stream - Server-Sent Events for real-time updates
 export async function GET() {
-  console.log('[STATE API] SSE: New client connected');
   
   const stream = new ReadableStream({
     start(controller) {
       // Add this client to the set
       clients.add(controller);
-      console.log('[STATE API] SSE: Client added, total clients:', clients.size);
       
       // Send initial state immediately from MongoDB
       getVideoState()
@@ -44,7 +41,6 @@ export async function GET() {
           };
           const data = `data: ${JSON.stringify(stateToSend)}\n\n`;
           controller.enqueue(new TextEncoder().encode(data));
-          console.log('[STATE API] SSE: Sent initial state to new client');
         })
         .catch(error => {
           console.error('[STATE API] SSE: Error sending initial state:', error);
@@ -64,12 +60,10 @@ export async function GET() {
       return () => {
         clearInterval(heartbeat);
         clients.delete(controller);
-        console.log('[STATE API] SSE: Client disconnected, remaining clients:', clients.size);
       };
     },
     cancel() {
       // Client disconnected
-      console.log('[STATE API] SSE: Client cancelled connection');
     }
   });
 

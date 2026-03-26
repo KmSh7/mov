@@ -30,8 +30,4 @@ server.use((req, res, next) => {
 server.use(router);
 
 server.listen(PORT, () => {
-  console.log("JSON Server running on port", PORT);
-  console.log("Endpoints:");
-  console.log("  GET    http://localhost:" + PORT + "/convo");
-  console.log("  POST   http://localhost:" + PORT + "/convo");
 });

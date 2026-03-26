@@ -23,7 +23,6 @@ export async function getAllMovies(): Promise<Movie[]> {
   
   const movies = await collection.find({}).toArray();
   
-  console.log('[Movies] Retrieved movies from MongoDB:', movies.length);
   
   return movies;
 }
@@ -48,7 +47,6 @@ export async function addMovie(name: string, link: string, imdb?: string, descri
   
   await collection.insertOne(newMovie);
   
-  console.log('[Movies] Added movie to MongoDB:', newMovie);
   
   return newMovie;
 }
@@ -74,7 +72,6 @@ export async function deleteMovie(id: string): Promise<boolean> {
   
   const result = await collection.deleteOne({ id });
   
-  console.log('[Movies] Deleted movie from MongoDB:', id, 'Deleted:', result.deletedCount > 0);
   
   return result.deletedCount > 0;
 }
@@ -91,6 +88,5 @@ export async function initializeMovies(movies: Movie[]): Promise<void> {
   
   if (movies.length > 0) {
     await collection.insertMany(movies);
-    console.log('[Movies] Initialized from JSON, added', movies.length, 'movies');
   }
 }

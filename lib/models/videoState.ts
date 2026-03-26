@@ -24,9 +24,6 @@ export async function getVideoState(): Promise<VideoState | null> {
   // Get the most recent state document (sorted by lastUpdatedAt descending)
   const state = await collection.findOne({}, { sort: { lastUpdatedAt: -1 } });
   
-  if (state) {
-    console.log('[VideoState] Retrieved from MongoDB:', state);
-  }
   
   return state;
 }
@@ -58,12 +55,10 @@ export async function updateVideoState(state: Partial<VideoState>): Promise<Vide
       { _id: currentState._id },
       { $set: newState }
     );
-    console.log('[VideoState] Updated in MongoDB:', { ...newState, _id: currentState._id });
     return { ...newState, _id: currentState._id };
   } else {
     // Insert new document if none exists
     const result = await collection.insertOne(newState);
-    console.log('[VideoState] Created in MongoDB:', { ...newState, _id: result.insertedId });
     return { ...newState, _id: result.insertedId.toString() };
   }
 }
@@ -92,12 +87,10 @@ export async function resetVideoState(): Promise<VideoState> {
       { _id: currentState._id },
       { $set: resetState }
     );
-    console.log('[VideoState] Reset in MongoDB:', { ...resetState, _id: currentState._id });
     return { ...resetState, _id: currentState._id };
   } else {
     // Insert new document if none exists
     const result = await collection.insertOne(resetState);
-    console.log('[VideoState] Reset in MongoDB:', resetState);
     return { ...resetState, _id: result.insertedId.toString() };
   }
 }
@@ -110,5 +103,4 @@ export async function deleteAllVideoStates(): Promise<void> {
   const collection = db.collection(VIDEO_STATE_COLLECTION);
   
   await collection.deleteMany({});
-  console.log('[VideoState] All documents deleted from MongoDB');
 }

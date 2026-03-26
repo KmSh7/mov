@@ -24,7 +24,6 @@ export async function getAllMessages(): Promise<ChatMessage[]> {
   
   const messages = await collection.find({}).sort({ timestamp: 1 }).toArray();
   
-  console.log('[Chat] Retrieved messages from MongoDB:', messages.length);
   
   return messages;
 }
@@ -47,7 +46,6 @@ export async function addMessage(user: string, text: string, replyTo?: string): 
   
   await collection.insertOne(newMessage);
   
-  console.log('[Chat] Added message to MongoDB:', newMessage);
   
   return newMessage;
 }
@@ -70,9 +68,6 @@ export async function editMessage(messageId: string, newText: string): Promise<C
     { returnDocument: 'after' }
   );
   
-  if (result) {
-    console.log('[Chat] Edited message in MongoDB:', result);
-  }
   
   return result;
 }
@@ -86,7 +81,6 @@ export async function deleteMessage(messageId: string): Promise<boolean> {
   
   const result = await collection.deleteOne({ id: messageId });
   
-  console.log('[Chat] Deleted message from MongoDB:', messageId, 'Deleted:', result.deletedCount > 0);
   
   return result.deletedCount > 0;
 }
@@ -114,7 +108,6 @@ export async function clearAllMessages(): Promise<void> {
   const collection = db.collection(CHAT_COLLECTION);
   
   await collection.deleteMany({});
-  console.log('[Chat] All messages cleared from MongoDB');
 }
 
 /**
@@ -136,6 +129,5 @@ export async function initializeChatFromJSON(kumarMessages: ChatMessage[], olivi
   
   if (messages.length > 0) {
     await collection.insertMany(messages);
-    console.log('[Chat] Initialized from JSON, added', messages.length, 'messages');
   }
 }

@@ -17,7 +17,7 @@ interface PlaybackState {
 }
 
 // Helper function to convert YouTube URL to embed URL
-function getEmbedUrl(url: string): string {
+function getYouTubeEmbedUrl(url: string): string {
   if (!url) return '';
   
   if (url.includes('youtube.com/embed') || url.includes('youtu.be/embed')) {
@@ -39,6 +39,53 @@ function getEmbedUrl(url: string): string {
     return `https://www.youtube.com/embed/${videoId}?enablejsapi=1`;
   }
   
+  return '';
+}
+
+// Helper function to convert Google Drive URL to embed URL
+function getGoogleDriveEmbedUrl(url: string): string {
+  if (!url) return '';
+  
+  // Already in embed format
+  if (url.includes('drive.google.com/file/d/') && url.includes('/preview')) {
+    return url;
+  }
+  
+  // Extract file ID from various Google Drive URL formats
+  let fileId = '';
+  
+  // Format: https://drive.google.com/file/d/FILE_ID/view?usp=sharing
+  if (url.includes('drive.google.com/file/d/')) {
+    fileId = url.split('drive.google.com/file/d/')[1]?.split('/')[0] || '';
+  }
+  // Format: https://drive.google.com/open?id=FILE_ID
+  else if (url.includes('drive.google.com/open')) {
+    const urlObj = new URL(url);
+    fileId = urlObj.searchParams.get('id') || '';
+  }
+  
+  if (fileId) {
+    return `https://drive.google.com/file/d/${fileId}/preview`;
+  }
+  
+  return '';
+}
+
+// Helper function to get the appropriate embed URL based on the source
+function getEmbedUrl(url: string): string {
+  if (!url) return '';
+  
+  // Check for Google Drive
+  if (url.includes('drive.google.com')) {
+    return getGoogleDriveEmbedUrl(url);
+  }
+  
+  // Check for YouTube
+  if (url.includes('youtube.com') || url.includes('youtu.be')) {
+    return getYouTubeEmbedUrl(url);
+  }
+  
+  // Return as-is for other URLs (direct video links)
   return url;
 }
 
@@ -68,8 +115,10 @@ const formatTime = (seconds: number): string => {
 export default function VideoPlayer({ movieLink, user }: VideoPlayerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YouTubePlayer | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const [embedUrl, setEmbedUrl] = useState('');
   const [isIframe, setIsIframe] = useState(false);
+  const [isYouTube, setIsYouTube] = useState(false);
   const [localState, setLocalState] = useState<PlaybackState>({
     currentTime: 0,
     isPlaying: false,
@@ -94,16 +143,21 @@ export default function VideoPlayer({ movieLink, user }: VideoPlayerProps) {
     if (!movieLink) {
       setEmbedUrl('');
       setIsIframe(false);
+      setIsYouTube(false);
       return;
     }
     const converted = getEmbedUrl(movieLink);
     setEmbedUrl(converted);
-    setIsIframe(converted.includes('youtube.com/embed'));
+    // Check if it's an iframe embed (YouTube or Google Drive)
+    const isYouTubeEmbed = converted.includes('youtube.com/embed');
+    const isGoogleDriveEmbed = converted.includes('drive.google.com');
+    setIsIframe(isYouTubeEmbed || isGoogleDriveEmbed);
+    setIsYouTube(isYouTubeEmbed);
   }, [movieLink]);
 
-  // Initialize YouTube IFrame API
+  // Initialize YouTube IFrame API (only for YouTube embeds)
   useEffect(() => {
-    if (!isIframe || !embedUrl) return;
+    if (!isYouTube || !embedUrl) return;
 
     if (typeof window !== 'undefined' && (window as unknown as { YT?: YouTubePlayer }).YT) {
       return;
@@ -115,13 +169,13 @@ export default function VideoPlayer({ movieLink, user }: VideoPlayerProps) {
     firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
 
     (window as unknown as { onYouTubeIframeAPIReady: () => void }).onYouTubeIframeAPIReady = () => {
-      console.log('[VideoPlayer] YouTube API ready');
+      
     };
-  }, [isIframe, embedUrl]);
+  }, [isYouTube, embedUrl]);
 
-  // Create player when embed URL is ready
+  // Create player when embed URL is ready (only for YouTube embeds)
   useEffect(() => {
-    if (!isIframe || !embedUrl || !containerRef.current) return;
+    if (!isYouTube || !embedUrl || !containerRef.current) return;
 
     const videoId = embedUrl.split('/embed/')[1]?.split('?')[0];
     if (!videoId) return;
@@ -144,12 +198,12 @@ export default function VideoPlayer({ movieLink, user }: VideoPlayerProps) {
             },
             events: {
               onReady: (_event: unknown) => {
-                console.log('[VideoPlayer] Player ready for user:', user);
+                
                 playerReadyRef.current = true;
                 setIsPlayerReady(true);
               },
               onStateChange: (_event: unknown) => {
-                console.log('[VideoPlayer] onStateChange fired for user:', user, 'event:', _event);
+                
                 
                 // Clear the flag immediately when any state change happens
                 // This allows user actions to be synced even if a remote sync just happened
@@ -158,28 +212,28 @@ export default function VideoPlayer({ movieLink, user }: VideoPlayerProps) {
                 
                 // If this was a remote change (triggered by SSE), skip the sync
                 if (wasRemoteChange) {
-                  console.log('[VideoPlayer] Skipping sync - this was a remote change');
+                  
                   return;
                 }
 
                 const typedEvent = _event as { data?: number };
                 const state = typedEvent?.data;
-                console.log('[VideoPlayer] Player state:', state, 'YT_PLAYING:', YT_PLAYING, 'YT_PAUSED:', YT_PAUSED, 'YT_BUFFERING:', YT_BUFFERING);
+                
                 
                 const isPlaying = state === YT_PLAYING;
                 const isPaused = state === YT_PAUSED;
                 const isBuffering = state === YT_BUFFERING;
-                console.log('[VideoPlayer] isPlaying:', isPlaying, 'isPaused:', isPaused, 'isBuffering:', isBuffering);
+                
 
                 // Ignore buffering state - wait for actual play/pause
                 if (isBuffering) {
-                  console.log('[VideoPlayer] Ignoring buffering state - waiting for stable state');
+                  
                   return;
                 }
 
                 if (isPlaying || isPaused) {
                   const currentTime = playerRef.current?.getCurrentTime() || 0;
-                  console.log('[VideoPlayer] Current time:', currentTime);
+                  
                   
                   // Determine action description
                   let action = '';
@@ -200,30 +254,30 @@ export default function VideoPlayer({ movieLink, user }: VideoPlayerProps) {
                     action
                   };
                   
-                  console.log('[VideoPlayer] Local player event:', action || (isPlaying ? 'playing' : 'paused'), 'at', currentTime, 'user:', user);
+                  
                   syncState({ 
                     isPlaying, 
                     currentTime: Math.floor(currentTime),
                     action
                   });
                 } else {
-                  console.log('[VideoPlayer] Ignoring non-play/pause state:', state);
+                  
                 }
               }
             }
           });
         } catch (error) {
-          console.error('Error creating player:', error);
+          
         }
       }
     }, 200);
 
     return () => clearInterval(checkApi);
-  }, [isIframe, embedUrl]);
+  }, [isYouTube, embedUrl]);
 
   // Poll for state updates every 2 seconds (more reliable than SSE on Vercel)
   useEffect(() => {
-    console.log('[VideoPlayer] Starting polling for user:', user);
+    
     let pollInterval: NodeJS.Timeout | null = null;
 
     const pollState = async () => {
@@ -232,25 +286,26 @@ export default function VideoPlayer({ movieLink, user }: VideoPlayerProps) {
         if (!response.ok) return;
         
         const state: PlaybackState = await response.json();
-        console.log('[VideoPlayer] Poll: Received state:', JSON.stringify(state));
-        console.log('[VideoPlayer] Poll: Comparing - lastUpdatedAt:', state.lastUpdatedAt, 'local lastUpdatedAt:', localStateRef.current.lastUpdatedAt, 'lastUpdatedBy:', state.lastUpdatedBy, 'current user:', user);
+        
+        
 
         if (state.lastUpdatedAt > localStateRef.current.lastUpdatedAt && state.lastUpdatedBy !== user) {
-          console.log('[VideoPlayer] Poll: Remote state update detected - will sync! Old:', JSON.stringify(localStateRef.current), 'New:', JSON.stringify(state));
+          
 
           setLocalState(state);
 
           prevStateRef.current = state;
 
+          // Handle YouTube player sync
           if (playerRef.current && playerReadyRef.current) {
             const timeDiff = Math.abs(state.currentTime - (playerRef.current.getCurrentTime() || 0));
-            console.log('[VideoPlayer] Poll: Time diff:', timeDiff);
-            console.log('[VideoPlayer] Poll: Remote isPlaying:', state.isPlaying);
+            
+            
             
             // Get current player state
             const currentPlayerState = playerRef.current.getPlayerState();
             const currentlyPlaying = currentPlayerState === YT_PLAYING;
-            console.log('[VideoPlayer] Poll: Current player state:', currentPlayerState, 'YT_PLAYING:', YT_PLAYING, 'currentlyPlaying:', currentlyPlaying);
+            
 
             // If remote state matches current player state, skip sync to avoid feedback loop
             const playerTime = playerRef.current.getCurrentTime() || 0;
@@ -258,7 +313,7 @@ export default function VideoPlayer({ movieLink, user }: VideoPlayerProps) {
             const playStateMatch = state.isPlaying === currentlyPlaying;
             
             if (timeMatch && playStateMatch) {
-              console.log('[VideoPlayer] Poll: Remote state matches current player state - skipping sync to avoid feedback loop');
+              
               prevStateRef.current = state;
               setLocalState(state);
               return;
@@ -270,29 +325,88 @@ export default function VideoPlayer({ movieLink, user }: VideoPlayerProps) {
 
             // If time diff < 10 seconds: it's okay, just sync play/pause (no seeking)
             if (timeDiff < 10) {
-              console.log('[VideoPlayer] Poll: Time diff < 10s - syncing play/pause only');
+              
               
               if (state.isPlaying && !currentlyPlaying) {
-                console.log('[VideoPlayer] Poll: Calling playVideo()');
+                
                 playerRef.current?.playVideo();
               } else if (!state.isPlaying && currentlyPlaying) {
-                console.log('[VideoPlayer] Poll: Calling pauseVideo()');
+                
                 playerRef.current?.pauseVideo();
               } else {
-                console.log('[VideoPlayer] Poll: No play/pause change needed');
+                
               }
             } else {
               // Time diff >= 10 seconds: seek to match + sync play/pause
-              console.log('[VideoPlayer] Poll: Time diff >= 10s - seeking to match');
+              
               setIsWaitingForSync(true);
               playerRef.current.seekTo(state.currentTime, true);
 
               setTimeout(() => {
-                console.log('[VideoPlayer] Poll: After seek - syncing play/pause. Remote isPlaying:', state.isPlaying);
+                
                 if (state.isPlaying) {
                   playerRef.current?.playVideo();
                 } else {
                   playerRef.current?.pauseVideo();
+                }
+                setIsWaitingForSync(false);
+              }, 500);
+            }
+            
+            // Reset local change flag after a delay to let player state stabilize
+            setTimeout(() => {
+              isLocalChangeRef.current = false;
+            }, 1000);
+          }
+          // Handle direct video URL sync (Cloudinary, etc.)
+          else if (videoRef.current && !isIframe) {
+            const timeDiff = Math.abs(state.currentTime - (videoRef.current.currentTime || 0));
+            
+            
+            
+            const currentlyPlaying = !videoRef.current.paused;
+            
+
+            // If remote state matches current player state, skip sync to avoid feedback loop
+            const playerTime = videoRef.current.currentTime || 0;
+            const timeMatch = Math.abs(state.currentTime - playerTime) < 2;
+            const playStateMatch = state.isPlaying === currentlyPlaying;
+            
+            if (timeMatch && playStateMatch) {
+              
+              prevStateRef.current = state;
+              setLocalState(state);
+              return;
+            }
+            
+            // Mark as local change BEFORE applying any remote changes
+            isLocalChangeRef.current = true;
+
+            // If time diff < 10 seconds: it's okay, just sync play/pause (no seeking)
+            if (timeDiff < 10) {
+              
+              
+              if (state.isPlaying && !currentlyPlaying) {
+                
+                videoRef.current.play();
+              } else if (!state.isPlaying && currentlyPlaying) {
+                
+                videoRef.current.pause();
+              } else {
+                
+              }
+            } else {
+              // Time diff >= 10 seconds: seek to match + sync play/pause
+              
+              setIsWaitingForSync(true);
+              videoRef.current.currentTime = state.currentTime;
+
+              setTimeout(() => {
+                
+                if (state.isPlaying) {
+                  videoRef.current?.play();
+                } else {
+                  videoRef.current?.pause();
                 }
                 setIsWaitingForSync(false);
               }, 500);
@@ -314,7 +428,7 @@ export default function VideoPlayer({ movieLink, user }: VideoPlayerProps) {
     pollInterval = setInterval(pollState, 2000);
 
     return () => {
-      console.log('[VideoPlayer] Poll: Cleaning up');
+      
       if (pollInterval) {
         clearInterval(pollInterval);
       }
@@ -323,10 +437,10 @@ export default function VideoPlayer({ movieLink, user }: VideoPlayerProps) {
 
   // Handle state sync to server
   const syncState = useCallback(async (newState: Partial<PlaybackState>) => {
-    console.log('[VideoPlayer] syncState called with:', newState);
+    
     setIsSyncing(true);
     try {
-      console.log('[VideoPlayer] Sending POST to /api/state...');
+      
       const response = await fetch('/api/state', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -335,16 +449,16 @@ export default function VideoPlayer({ movieLink, user }: VideoPlayerProps) {
           user
         })
       });
-      console.log('[VideoPlayer] API response status:', response.status);
+      
       const updatedState = await response.json();
-      console.log('[VideoPlayer] API response data:', updatedState);
+      
 
       isLocalChangeRef.current = true;
       setLocalState(updatedState);
 
-      console.log('[VideoPlayer] Synced state to server:', updatedState);
+      
     } catch (error) {
-      console.error('[VideoPlayer] Error syncing state to server:', error);
+      
     } finally {
       setIsSyncing(false);
     }
@@ -378,24 +492,30 @@ export default function VideoPlayer({ movieLink, user }: VideoPlayerProps) {
   if (!isIframe) {
     return (
       <div className="space-y-2">
-        <div className="relative bg-black rounded-xl overflow-hidden shadow-2xl">
-          <video
-            className="w-full aspect-video"
-            controls
-            onPlay={() => syncState({ isPlaying: true, action: 'started playing' })}
-            onPause={() => syncState({ isPlaying: false, action: 'paused' })}
-            onTimeUpdate={(e) => syncState({ currentTime: e.currentTarget.currentTime })}
-          >
-            <source src={movieLink} type="video/mp4" />
-            Your browser does not support the video tag.
-          </video>
+        <div className="relative bg-black rounded-xl overflow-hidden shadow-2xl max-w-4xl mx-auto">
+          <div className="relative w-full" style={{ paddingBottom: '56.25%' }}>
+            <video
+              ref={videoRef}
+              className="absolute top-0 left-0 w-full h-full"
+              controls
+              onPlay={() => syncState({ isPlaying: true, action: 'started playing' })}
+              onPause={() => syncState({ isPlaying: false, action: 'paused' })}
+              onTimeUpdate={(e) => {
+                // Only sync time, preserve current play/pause state
+                const currentTime = e.currentTarget.currentTime;
+                const isPlaying = !e.currentTarget.paused;
+                syncState({ 
+                  currentTime, 
+                  isPlaying,
+                  action: isPlaying ? (localStateRef.current.isPlaying ? '' : 'started playing') : 'paused'
+                });
+              }}
+            >
+              <source src={movieLink} />
+              Your browser does not support the video tag.
+            </video>
+          </div>
 
-          {(isSyncing || isWaitingForSync) && (
-            <div className="absolute top-4 right-4 bg-orange-500/80 text-white text-xs px-3 py-1 rounded-full flex items-center gap-2">
-              <span className="animate-spin">⟳</span>
-              {isWaitingForSync ? 'Syncing...' : 'Saving...'}
-            </div>
-          )}
         </div>
         
         {/* Status below video */}
@@ -410,6 +530,60 @@ export default function VideoPlayer({ movieLink, user }: VideoPlayerProps) {
 
   const playerId = `youtube-player-${Math.random().toString(36).substr(2, 9)}`;
 
+  // Render Google Drive embed as a regular iframe (styled like YouTube)
+  if (isIframe && !isYouTube) {
+    return (
+      <div className="space-y-2">
+        <div className="relative bg-black rounded-xl overflow-hidden shadow-2xl max-w-4xl mx-auto">
+          <div className="relative w-full" style={{ paddingBottom: '56.25%' }}>
+            <iframe
+              src={embedUrl}
+              className="absolute top-0 left-0 w-full h-full"
+              allow="autoplay; encrypted-media"
+              allowFullScreen
+              frameBorder="0"
+            />
+          </div>
+
+        </div>
+        
+        {/* Manual sync controls for Google Drive */}
+        <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-4 max-w-4xl mx-auto">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="text-sm text-gray-600 dark:text-gray-400">
+              <p className="font-medium">Google Drive Video</p>
+              <p className="text-xs">Manual sync required (no auto-detection)</p>
+            </div>
+            
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => syncState({ isPlaying: true, action: 'started playing' })}
+                className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-medium transition-colors"
+              >
+                ▶ Play
+              </button>
+              <button
+                onClick={() => syncState({ isPlaying: false, action: 'paused' })}
+                className="px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg text-sm font-medium transition-colors"
+              >
+                ⏸ Pause
+              </button>
+            </div>
+          </div>
+          
+          {/* Current synced state */}
+          {localStateRef.current.lastUpdatedBy && (
+            <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+              <div className="text-center text-sm text-gray-500 dark:text-gray-400">
+                {getActionDescription()}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-2">
       <div className="relative bg-black rounded-xl overflow-hidden shadow-2xl">
@@ -419,12 +593,6 @@ export default function VideoPlayer({ movieLink, user }: VideoPlayerProps) {
           className="w-full aspect-video"
         />
 
-        {(isSyncing || isWaitingForSync) && (
-          <div className="absolute top-4 right-4 bg-orange-500/90 text-white text-xs px-3 py-2 rounded-full flex items-center gap-2 shadow-lg">
-            <span className="animate-spin">⟳</span>
-            {isWaitingForSync ? 'Syncing video...' : 'Saving...'}
-          </div>
-        )}
       </div>
       
       {/* Status below video */}

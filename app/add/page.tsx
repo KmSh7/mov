@@ -124,12 +124,14 @@ export default function AddMovie() {
                 required
                 value={formData.link}
                 onChange={handleChange}
-                placeholder="YouTube embed link or video URL"
+                placeholder="YouTube, Google Drive, or direct video URL"
                 className="w-full px-4 py-3 rounded-lg border-2 border-gray-200 dark:border-gray-600 focus:border-orange-500 focus:outline-none dark:bg-gray-700 dark:text-white transition-colors"
               />
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                For YouTube, use the embed URL (e.g., https://www.youtube.com/embed/...)
-              </p>
+              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 space-y-1">
+                <p><strong>YouTube:</strong> Use embed URL (e.g., https://www.youtube.com/embed/...)</p>
+                <p><strong>Google Drive:</strong> Share link (e.g., https://drive.google.com/file/d/FILE_ID/view)</p>
+                <p><strong>Direct URL:</strong> Any direct video file URL</p>
+              </div>
             </div>
 
             {/* IMDb Link */}

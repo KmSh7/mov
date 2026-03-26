@@ -7,7 +7,6 @@ export const dynamic = 'force-dynamic';
 // GET /api/state - Get current playback state from MongoDB
 export async function GET() {
   try {
-    console.log('[STATE API] GET request received');
     const state = await getVideoState();
     
     if (!state) {
@@ -21,7 +20,6 @@ export async function GET() {
       });
     }
     
-    console.log('[STATE API] GET returning state:', JSON.stringify(state));
     return NextResponse.json(state);
   } catch (error) {
     console.error('[STATE API] GET Error reading state:', error);
@@ -35,7 +33,6 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { currentTime, isPlaying, user, action } = body;
     
-    console.log('[STATE API] POST request received:', { currentTime, isPlaying, user, action });
 
     // Update state in MongoDB
     const newState = await updateVideoState({
@@ -45,7 +42,6 @@ export async function POST(request: Request) {
       action: typeof action === 'string' ? action : undefined
     });
     
-    console.log('[STATE API] New state from MongoDB:', JSON.stringify(newState));
 
     // Broadcast to all connected SSE clients
     broadcastState(newState);
@@ -60,10 +56,8 @@ export async function POST(request: Request) {
 // DELETE /api/state - Reset playback state in MongoDB
 export async function DELETE() {
   try {
-    console.log('[STATE API] DELETE request received - resetting state');
     
     const resetState = await resetVideoState();
-    console.log('[STATE API] State reset successfully:', JSON.stringify(resetState));
 
     // Broadcast to all connected SSE clients
     broadcastState(resetState);

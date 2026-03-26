@@ -33,20 +33,16 @@ function parseConvoResponse(data: unknown): ConvoEntry[] {
 
 // GET /api/chat - Get all chat messages from JSON server
 export async function GET() {
-  console.log('[API/Chat] GET request received');
   try {
     const response = await fetch(`${JSON_SERVER_URL}/convo`);
-    console.log('[API/Chat] JSON server response status:', response.status);
     
     if (!response.ok) {
       throw new Error(`Failed to fetch from JSON server: ${response.status}`);
     }
     
     const data = await response.json();
-    console.log('[API/Chat] JSON server raw response:', JSON.stringify(data));
     
     const convo = parseConvoResponse(data);
-    console.log('[API/Chat] Convo entries:', convo.length);
     
     // Convert each entry to a message
     const messages: ChatMessage[] = [];
@@ -62,7 +58,6 @@ export async function GET() {
       
       // Skip known hardcoded IDs
       if (skipIds.includes(entry.id)) {
-        console.log('[API/Chat] Skipping hardcoded entry:', entry.id);
         return;
       }
       
@@ -83,7 +78,6 @@ export async function GET() {
     
     // Sort by timestamp
     messages.sort((a, b) => a.timestamp - b.timestamp);
-    console.log('[API/Chat] Returning messages:', messages.length);
     
     return NextResponse.json(messages);
   } catch (error) {
@@ -94,11 +88,9 @@ export async function GET() {
 
 // POST /api/chat - Send a new message (create a NEW entry for each message)
 export async function POST(request: Request) {
-  console.log('[API/Chat] POST request received');
   try {
     const body = await request.json();
     const { text, user, replyTo } = body;
-    console.log('[API/Chat] Received - user:', user, 'text:', text);
 
     // Validate required fields
     if (!text || !user) {
@@ -113,10 +105,8 @@ export async function POST(request: Request) {
     const countData = await countResponse.json();
     const convo = parseConvoResponse(countData);
     const currentCount = convo.filter(e => e.id && e.id !== '').length;
-    console.log('[API/Chat] Current message count:', currentCount);
     
     if (currentCount >= 10000) {
-      console.log('[API/Chat] Message count exceeded 10000, clearing database...');
       // Delete all non-empty entries one by one
       for (let i = convo.length - 1; i >= 0; i--) {
         if (convo[i].id && convo[i].id !== '') {
@@ -127,7 +117,6 @@ export async function POST(request: Request) {
 
     // Create a NEW entry - JSON server auto-generates unique ID
     // Use user as the 'user' field, and text as 'userSays'
-    console.log('[API/Chat] Creating new message entry...');
     
     const postResponse = await fetch(`${JSON_SERVER_URL}/convo`, {
       method: 'POST',
@@ -139,14 +128,12 @@ export async function POST(request: Request) {
         userSays: text
       })
     });
-    console.log('[API/Chat] POST response status:', postResponse.status);
 
     if (!postResponse.ok) {
       throw new Error('Failed to create message on JSON server');
     }
 
     const createdEntry = await postResponse.json();
-    console.log('[API/Chat] Created entry:', createdEntry);
 
     // Get the auto-generated ID
     const newId = createdEntry.id || `msg-${Date.now()}`;
@@ -161,7 +148,6 @@ export async function POST(request: Request) {
       user: user.toLowerCase()
     };
 
-    console.log('[API/Chat] New message created:', newMessage);
     return NextResponse.json(newMessage, { status: 201 });
   } catch (error) {
     console.error('[API/Chat] Error sending message to JSON server:', error);
@@ -171,7 +157,6 @@ export async function POST(request: Request) {
 
 // PUT /api/chat - Edit a message
 export async function PUT(request: Request) {
-  console.log('[API/Chat] PUT request received');
   try {
     const body = await request.json();
     const { messageId, text } = body;
@@ -201,13 +186,11 @@ export async function PUT(request: Request) {
     const user = convo[entryIndex].user || convo[entryIndex].id;
 
     // PATCH to update userSays
-    console.log('[API/Chat] PATCH updating message at index:', entryIndex + 1);
     const patchResponse = await fetch(`${JSON_SERVER_URL}/convo/${entryIndex + 1}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userSays: text })  // Keep as string, not array
     });
-    console.log('[API/Chat] PATCH response status:', patchResponse.status);
 
     if (!patchResponse.ok) {
       throw new Error('Failed to update message on JSON server');
@@ -228,7 +211,6 @@ export async function PUT(request: Request) {
 
 // DELETE /api/chat - Delete a message
 export async function DELETE(request: Request) {
-  console.log('[API/Chat] DELETE request received');
   try {
     const { searchParams } = new URL(request.url);
     const messageId = searchParams.get('messageId');
@@ -236,7 +218,6 @@ export async function DELETE(request: Request) {
 
     // Special parameter to clear ALL messages
     if (clearAll === 'true') {
-      console.log('[API/Chat] Clearing all messages...');
       const getResponse = await fetch(`${JSON_SERVER_URL}/convo`);
       const data = await getResponse.json();
       const convo = parseConvoResponse(data);
@@ -247,7 +228,6 @@ export async function DELETE(request: Request) {
           await fetch(`${JSON_SERVER_URL}/convo/${i + 1}`, { method: 'DELETE' });
         }
       }
-      console.log('[API/Chat] All messages cleared');
       return NextResponse.json({ success: true, message: 'All messages cleared' });
     }
 
@@ -271,11 +251,9 @@ export async function DELETE(request: Request) {
     }
 
     // DELETE the specific entry (JSON Server uses 1-based index)
-    console.log('[API/Chat] DELETE removing entry at index:', entryIndex + 1);
     const deleteResponse = await fetch(`${JSON_SERVER_URL}/convo/${entryIndex + 1}`, {
       method: 'DELETE'
     });
-    console.log('[API/Chat] DELETE response status:', deleteResponse.status);
 
     if (!deleteResponse.ok) {
       throw new Error('Failed to delete message from JSON server');
