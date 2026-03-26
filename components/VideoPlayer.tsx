@@ -289,7 +289,7 @@ export default function VideoPlayer({ movieLink, user }: VideoPlayerProps) {
         
         
 
-        if (state.lastUpdatedAt > localStateRef.current.lastUpdatedAt && state.lastUpdatedBy !== user) {
+        if (state.lastUpdatedAt > localStateRef.current.lastUpdatedAt) {
           
 
           setLocalState(state);
