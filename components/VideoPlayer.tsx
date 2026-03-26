@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 
 interface VideoPlayerProps {
   movieId: string;
-  movieLink: string;
+  movieLink: string | null;
   user: string;
 }
 
@@ -91,6 +91,11 @@ export default function VideoPlayer({ movieLink, user }: VideoPlayerProps) {
 
   // Convert URL to embed format
   useEffect(() => {
+    if (!movieLink) {
+      setEmbedUrl('');
+      setIsIframe(false);
+      return;
+    }
     const converted = getEmbedUrl(movieLink);
     setEmbedUrl(converted);
     setIsIframe(converted.includes('youtube.com/embed'));
@@ -257,6 +262,18 @@ export default function VideoPlayer({ movieLink, user }: VideoPlayerProps) {
               const currentlyPlaying = currentPlayerState === YT_PLAYING;
               console.log('[VideoPlayer] SSE: Current player state:', currentPlayerState, 'YT_PLAYING:', YT_PLAYING, 'currentlyPlaying:', currentlyPlaying);
 
+              // If remote state matches current player state, skip sync to avoid feedback loop
+              const playerTime = playerRef.current.getCurrentTime() || 0;
+              const timeMatch = Math.abs(state.currentTime - playerTime) < 2;
+              const playStateMatch = state.isPlaying === currentlyPlaying;
+              
+              if (timeMatch && playStateMatch) {
+                console.log('[VideoPlayer] SSE: Remote state matches current player state - skipping sync to avoid feedback loop');
+                prevStateRef.current = state;
+                setLocalState(state);
+                return;
+              }
+              
               // Mark as local change BEFORE applying any remote changes
               // This prevents the onStateChange event from triggering another sync
               isLocalChangeRef.current = true;
@@ -332,8 +349,10 @@ export default function VideoPlayer({ movieLink, user }: VideoPlayerProps) {
 
   // Handle state sync to server
   const syncState = useCallback(async (newState: Partial<PlaybackState>) => {
+    console.log('[VideoPlayer] syncState called with:', newState);
     setIsSyncing(true);
     try {
+      console.log('[VideoPlayer] Sending POST to /api/state...');
       const response = await fetch('/api/state', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -342,7 +361,9 @@ export default function VideoPlayer({ movieLink, user }: VideoPlayerProps) {
           user
         })
       });
+      console.log('[VideoPlayer] API response status:', response.status);
       const updatedState = await response.json();
+      console.log('[VideoPlayer] API response data:', updatedState);
 
       isLocalChangeRef.current = true;
       setLocalState(updatedState);
@@ -372,6 +393,14 @@ export default function VideoPlayer({ movieLink, user }: VideoPlayerProps) {
   };
 
   // For non-iframe videos (direct video URLs)
+  if (!movieLink || movieLink === '') {
+    return (
+      <div className="w-full aspect-video bg-gray-800 flex items-center justify-center">
+        <p className="text-gray-400">Loading video...</p>
+      </div>
+    );
+  }
+
   if (!isIframe) {
     return (
       <div className="space-y-2">

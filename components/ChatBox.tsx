@@ -22,10 +22,12 @@ export default function ChatBox({ user, theme = 'blue' }: ChatBoxProps) {
   const [newMessage, setNewMessage] = useState('');
   const [replyTo, setReplyTo] = useState<string | null>(null);
   const [isTyping, setIsTyping] = useState(false);
+  const [showScrollButton, setShowScrollButton] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const prevMessageCountRef = useRef(0);
 
-  // Fetch messages every 1.5 seconds
+  // Initial fetch of messages (no polling - fetch on demand)
   useEffect(() => {
     const fetchMessages = async () => {
       try {
@@ -33,22 +35,33 @@ export default function ChatBox({ user, theme = 'blue' }: ChatBoxProps) {
         const data: Message[] = await response.json();
         setMessages(data);
       } catch (error) {
-        console.error('Error fetching messages:', error);
+        console.error('[ChatBox] Error fetching messages:', error);
       }
     };
-
     fetchMessages();
-    const interval = setInterval(fetchMessages, 1500);
-    return () => clearInterval(interval);
+
+    // Refresh messages when user focuses on the window/tab
+    const handleFocus = () => {
+      fetchMessages();
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
   }, []);
 
-  // Track previous message count using ref to avoid ESLint warning
-  const prevMessageCountRef = useRef(0);
-  const [showScrollButton, setShowScrollButton] = useState(false);
+  // Manual refresh function
+  const refreshMessages = async () => {
+    try {
+      const response = await fetch('/api/chat');
+      const data: Message[] = await response.json();
+      setMessages(data);
+    } catch (error) {
+      console.error('[ChatBox] Error refreshing messages:', error);
+    }
+  };
 
-  // Auto-scroll to bottom only when NEW messages arrive (not on initial load)
+  // Auto-scroll to bottom when messages change (for new messages after initial load)
   useEffect(() => {
-    if (messages.length > prevMessageCountRef.current && prevMessageCountRef.current > 0) {
+    if (messages.length > 0 && messages.length > prevMessageCountRef.current) {
       // New message arrived - scroll to bottom
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
@@ -80,7 +93,7 @@ export default function ChatBox({ user, theme = 'blue' }: ChatBoxProps) {
     if (!newMessage.trim()) return;
 
     try {
-      await fetch('/api/chat', {
+      const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -90,17 +103,23 @@ export default function ChatBox({ user, theme = 'blue' }: ChatBoxProps) {
         })
       });
 
+      if (response.ok) {
+        const newMsg = await response.json();
+        // Add new message directly to the messages array
+        setMessages(prev => [...prev, newMsg]);
+      }
+
       setNewMessage('');
       setReplyTo(null);
       inputRef.current?.focus();
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error('[ChatBox] Error sending message:', error);
     }
   };
 
   const handleEdit = async (messageId: string, newText: string) => {
     try {
-      await fetch('/api/chat', {
+      const response = await fetch('/api/chat', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -109,6 +128,15 @@ export default function ChatBox({ user, theme = 'blue' }: ChatBoxProps) {
           user
         })
       });
+
+      if (response.ok) {
+        // Update the message in local state
+        setMessages(prev => prev.map(msg => 
+          msg.id === messageId 
+            ? { ...msg, text: newText, edited: true }
+            : msg
+        ));
+      }
     } catch (error) {
       console.error('Error editing message:', error);
     }
@@ -116,9 +144,14 @@ export default function ChatBox({ user, theme = 'blue' }: ChatBoxProps) {
 
   const handleDelete = async (messageId: string) => {
     try {
-      await fetch(`/api/chat?messageId=${messageId}&user=${user}`, {
+      const response = await fetch(`/api/chat?messageId=${messageId}&user=${user}`, {
         method: 'DELETE'
       });
+
+      if (response.ok) {
+        // Remove the message from local state
+        setMessages(prev => prev.filter(msg => msg.id !== messageId));
+      }
     } catch (error) {
       console.error('Error deleting message:', error);
     }
@@ -152,9 +185,20 @@ export default function ChatBox({ user, theme = 'blue' }: ChatBoxProps) {
     <div className="flex flex-col h-full bg-white dark:bg-gray-800 rounded-xl shadow-xl overflow-hidden border border-gray-200 dark:border-gray-700">
       {/* Chat Header */}
       <div className={`px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r ${headerGradient}`}>
-        <div className="flex items-center gap-2">
-          <span className="text-xl">💬</span>
-          <h3 className="font-bold text-white text-base">Chat</h3>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">💬</span>
+            <h3 className="font-bold text-white text-base">Chat</h3>
+          </div>
+          <button
+            onClick={refreshMessages}
+            className="text-white/70 hover:text-white p-1 rounded transition-colors"
+            title="Refresh messages"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
         </div>
         <p className="text-gray-400 text-xs">
           {headerText}

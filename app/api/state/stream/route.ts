@@ -1,11 +1,7 @@
 import { NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
+import { getVideoState } from '@/lib/models/videoState';
 
 export const dynamic = 'force-dynamic';
-
-// Path to state.json file
-const stateFilePath = path.join(process.cwd(), 'data', 'state.json');
 
 // Keep track of all connected SSE clients - SHARED with state route
 const clients: Set<ReadableStreamDefaultController> = new Set();
@@ -36,16 +32,23 @@ export async function GET() {
       clients.add(controller);
       console.log('[STATE API] SSE: Client added, total clients:', clients.size);
       
-      // Send initial state immediately
-      try {
-        const fileContent = fs.readFileSync(stateFilePath, 'utf-8');
-        const state = JSON.parse(fileContent);
-        const data = `data: ${JSON.stringify(state)}\n\n`;
-        controller.enqueue(new TextEncoder().encode(data));
-        console.log('[STATE API] SSE: Sent initial state to new client');
-      } catch (error) {
-        console.error('[STATE API] SSE: Error sending initial state:', error);
-      }
+      // Send initial state immediately from MongoDB
+      getVideoState()
+        .then(state => {
+          const stateToSend = state || {
+            currentTime: 0,
+            isPlaying: false,
+            lastUpdatedBy: '',
+            lastUpdatedAt: Date.now(),
+            action: ''
+          };
+          const data = `data: ${JSON.stringify(stateToSend)}\n\n`;
+          controller.enqueue(new TextEncoder().encode(data));
+          console.log('[STATE API] SSE: Sent initial state to new client');
+        })
+        .catch(error => {
+          console.error('[STATE API] SSE: Error sending initial state:', error);
+        });
       
       // Send heartbeat every 15 seconds to keep connection alive
       const heartbeat = setInterval(() => {
@@ -79,5 +82,3 @@ export async function GET() {
     }
   });
 }
-
-

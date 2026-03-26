@@ -1,0 +1,9 @@
+{
+  "message": "Welcome to WatchParty",
+  "movies": [],
+  "currentTime": 0,
+  "isPlaying": false,
+  "lastUpdatedBy": "",
+  "lastUpdatedAt": 0,
+  "action": ""
+}
