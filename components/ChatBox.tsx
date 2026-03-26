@@ -27,7 +27,7 @@ export default function ChatBox({ user, theme = 'blue' }: ChatBoxProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const prevMessageCountRef = useRef(0);
 
-  // Initial fetch of messages (no polling - fetch on demand)
+  // Initial fetch of messages and polling every 3 seconds
   useEffect(() => {
     const fetchMessages = async () => {
       try {
@@ -40,12 +40,18 @@ export default function ChatBox({ user, theme = 'blue' }: ChatBoxProps) {
     };
     fetchMessages();
 
+    // Poll for new messages every 3 seconds
+    const pollInterval = setInterval(fetchMessages, 3000);
+
     // Refresh messages when user focuses on the window/tab
     const handleFocus = () => {
       fetchMessages();
     };
     window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
+    return () => {
+      clearInterval(pollInterval);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, []);
 
   // Manual refresh function

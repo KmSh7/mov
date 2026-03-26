@@ -221,128 +221,102 @@ export default function VideoPlayer({ movieLink, user }: VideoPlayerProps) {
     return () => clearInterval(checkApi);
   }, [isIframe, embedUrl]);
 
-  // Poll for state updates every 1 second
+  // Poll for state updates every 2 seconds (more reliable than SSE on Vercel)
   useEffect(() => {
-    console.log('[VideoPlayer] Starting SSE connection for user:', user);
-    let eventSource: EventSource | null = null;
-    let reconnectTimeout: NodeJS.Timeout | null = null;
+    console.log('[VideoPlayer] Starting polling for user:', user);
+    let pollInterval: NodeJS.Timeout | null = null;
 
-    const connectSSE = () => {
-      eventSource = new EventSource('/api/state/stream');
-      console.log('[VideoPlayer] SSE: EventSource created');
-
-      eventSource.onopen = () => {
-        console.log('[VideoPlayer] SSE: Connection opened');
-        if (reconnectTimeout) {
-          clearTimeout(reconnectTimeout);
-          reconnectTimeout = null;
-        }
-      };
-
-      eventSource.onmessage = (event) => {
-        try {
-          const state: PlaybackState = JSON.parse(event.data);
-          console.log('[VideoPlayer] SSE: Received state:', JSON.stringify(state));
-          console.log('[VideoPlayer] SSE: Comparing - lastUpdatedAt:', state.lastUpdatedAt, 'local lastUpdatedAt:', localStateRef.current.lastUpdatedAt, 'lastUpdatedBy:', state.lastUpdatedBy, 'current user:', user);
-
-          if (state.lastUpdatedAt > localStateRef.current.lastUpdatedAt && state.lastUpdatedBy !== user) {
-            console.log('[VideoPlayer] SSE: Remote state update detected - will sync! Old:', JSON.stringify(localStateRef.current), 'New:', JSON.stringify(state));
-
-            setLocalState(state);
-
-            prevStateRef.current = state;
-
-            if (playerRef.current && playerReadyRef.current) {
-              const timeDiff = Math.abs(state.currentTime - (playerRef.current.getCurrentTime() || 0));
-              console.log('[VideoPlayer] SSE: Time diff:', timeDiff);
-              console.log('[VideoPlayer] SSE: Remote isPlaying:', state.isPlaying);
-              
-              // Get current player state
-              const currentPlayerState = playerRef.current.getPlayerState();
-              const currentlyPlaying = currentPlayerState === YT_PLAYING;
-              console.log('[VideoPlayer] SSE: Current player state:', currentPlayerState, 'YT_PLAYING:', YT_PLAYING, 'currentlyPlaying:', currentlyPlaying);
-
-              // If remote state matches current player state, skip sync to avoid feedback loop
-              const playerTime = playerRef.current.getCurrentTime() || 0;
-              const timeMatch = Math.abs(state.currentTime - playerTime) < 2;
-              const playStateMatch = state.isPlaying === currentlyPlaying;
-              
-              if (timeMatch && playStateMatch) {
-                console.log('[VideoPlayer] SSE: Remote state matches current player state - skipping sync to avoid feedback loop');
-                prevStateRef.current = state;
-                setLocalState(state);
-                return;
-              }
-              
-              // Mark as local change BEFORE applying any remote changes
-              // This prevents the onStateChange event from triggering another sync
-              isLocalChangeRef.current = true;
-
-              // If time diff < 10 seconds: it's okay, just sync play/pause (no seeking)
-              if (timeDiff < 10) {
-                console.log('[VideoPlayer] SSE: Time diff < 10s - syncing play/pause only');
-                
-                if (state.isPlaying && !currentlyPlaying) {
-                  console.log('[VideoPlayer] SSE: Calling playVideo()');
-                  playerRef.current?.playVideo();
-                } else if (!state.isPlaying && currentlyPlaying) {
-                  console.log('[VideoPlayer] SSE: Calling pauseVideo()');
-                  playerRef.current?.pauseVideo();
-                } else {
-                  console.log('[VideoPlayer] SSE: No play/pause change needed');
-                }
-              } else {
-                // Time diff >= 10 seconds: seek to match + sync play/pause
-                console.log('[VideoPlayer] SSE: Time diff >= 10s - seeking to match');
-                setIsWaitingForSync(true);
-                playerRef.current.seekTo(state.currentTime, true);
-
-                setTimeout(() => {
-                  console.log('[VideoPlayer] SSE: After seek - syncing play/pause. Remote isPlaying:', state.isPlaying);
-                  if (state.isPlaying) {
-                    playerRef.current?.playVideo();
-                  } else {
-                    playerRef.current?.pauseVideo();
-                  }
-                  setIsWaitingForSync(false);
-                }, 500);
-              }
-              
-              // Reset local change flag after a delay to let player state stabilize
-              setTimeout(() => {
-                isLocalChangeRef.current = false;
-              }, 1000);
-            }
-          }
-        } catch (error) {
-          console.error('[VideoPlayer] SSE: Error parsing state:', error);
-        }
-      };
-
-      eventSource.onerror = (error) => {
-        console.error('[VideoPlayer] SSE: Error:', error);
-        eventSource?.close();
+    const pollState = async () => {
+      try {
+        const response = await fetch('/api/state');
+        if (!response.ok) return;
         
-        // Reconnect after 2 seconds
-        if (!reconnectTimeout) {
-          console.log('[VideoPlayer] SSE: Reconnecting in 2 seconds...');
-          reconnectTimeout = setTimeout(() => {
-            reconnectTimeout = null;
-            connectSSE();
-          }, 2000);
+        const state: PlaybackState = await response.json();
+        console.log('[VideoPlayer] Poll: Received state:', JSON.stringify(state));
+        console.log('[VideoPlayer] Poll: Comparing - lastUpdatedAt:', state.lastUpdatedAt, 'local lastUpdatedAt:', localStateRef.current.lastUpdatedAt, 'lastUpdatedBy:', state.lastUpdatedBy, 'current user:', user);
+
+        if (state.lastUpdatedAt > localStateRef.current.lastUpdatedAt && state.lastUpdatedBy !== user) {
+          console.log('[VideoPlayer] Poll: Remote state update detected - will sync! Old:', JSON.stringify(localStateRef.current), 'New:', JSON.stringify(state));
+
+          setLocalState(state);
+
+          prevStateRef.current = state;
+
+          if (playerRef.current && playerReadyRef.current) {
+            const timeDiff = Math.abs(state.currentTime - (playerRef.current.getCurrentTime() || 0));
+            console.log('[VideoPlayer] Poll: Time diff:', timeDiff);
+            console.log('[VideoPlayer] Poll: Remote isPlaying:', state.isPlaying);
+            
+            // Get current player state
+            const currentPlayerState = playerRef.current.getPlayerState();
+            const currentlyPlaying = currentPlayerState === YT_PLAYING;
+            console.log('[VideoPlayer] Poll: Current player state:', currentPlayerState, 'YT_PLAYING:', YT_PLAYING, 'currentlyPlaying:', currentlyPlaying);
+
+            // If remote state matches current player state, skip sync to avoid feedback loop
+            const playerTime = playerRef.current.getCurrentTime() || 0;
+            const timeMatch = Math.abs(state.currentTime - playerTime) < 2;
+            const playStateMatch = state.isPlaying === currentlyPlaying;
+            
+            if (timeMatch && playStateMatch) {
+              console.log('[VideoPlayer] Poll: Remote state matches current player state - skipping sync to avoid feedback loop');
+              prevStateRef.current = state;
+              setLocalState(state);
+              return;
+            }
+            
+            // Mark as local change BEFORE applying any remote changes
+            // This prevents the onStateChange event from triggering another sync
+            isLocalChangeRef.current = true;
+
+            // If time diff < 10 seconds: it's okay, just sync play/pause (no seeking)
+            if (timeDiff < 10) {
+              console.log('[VideoPlayer] Poll: Time diff < 10s - syncing play/pause only');
+              
+              if (state.isPlaying && !currentlyPlaying) {
+                console.log('[VideoPlayer] Poll: Calling playVideo()');
+                playerRef.current?.playVideo();
+              } else if (!state.isPlaying && currentlyPlaying) {
+                console.log('[VideoPlayer] Poll: Calling pauseVideo()');
+                playerRef.current?.pauseVideo();
+              } else {
+                console.log('[VideoPlayer] Poll: No play/pause change needed');
+              }
+            } else {
+              // Time diff >= 10 seconds: seek to match + sync play/pause
+              console.log('[VideoPlayer] Poll: Time diff >= 10s - seeking to match');
+              setIsWaitingForSync(true);
+              playerRef.current.seekTo(state.currentTime, true);
+
+              setTimeout(() => {
+                console.log('[VideoPlayer] Poll: After seek - syncing play/pause. Remote isPlaying:', state.isPlaying);
+                if (state.isPlaying) {
+                  playerRef.current?.playVideo();
+                } else {
+                  playerRef.current?.pauseVideo();
+                }
+                setIsWaitingForSync(false);
+              }, 500);
+            }
+            
+            // Reset local change flag after a delay to let player state stabilize
+            setTimeout(() => {
+              isLocalChangeRef.current = false;
+            }, 1000);
+          }
         }
-      };
+      } catch (error) {
+        console.error('[VideoPlayer] Poll: Error fetching state:', error);
+      }
     };
 
-    connectSSE();
+    // Poll immediately, then every 2 seconds
+    pollState();
+    pollInterval = setInterval(pollState, 2000);
 
     return () => {
-      console.log('[VideoPlayer] SSE: Cleaning up');
-      if (eventSource) {
-        eventSource.close();
-      }
-      if (reconnectTimeout) {
-        clearTimeout(reconnectTimeout);
+      console.log('[VideoPlayer] Poll: Cleaning up');
+      if (pollInterval) {
+        clearInterval(pollInterval);
       }
     };
   }, [localState.lastUpdatedAt, user]);
