@@ -289,7 +289,7 @@ export default function VideoPlayer({ movieLink, user }: VideoPlayerProps) {
         
         
 
-        if (state.lastUpdatedAt > localStateRef.current.lastUpdatedAt) {
+        if (state.lastUpdatedAt > localStateRef.current.lastUpdatedAt && state.lastUpdatedBy !== user) {
           
 
           setLocalState(state);
@@ -498,17 +498,15 @@ export default function VideoPlayer({ movieLink, user }: VideoPlayerProps) {
               ref={videoRef}
               className="absolute top-0 left-0 w-full h-full"
               controls
-              onPlay={() => syncState({ isPlaying: true, action: 'started playing' })}
-              onPause={() => syncState({ isPlaying: false, action: 'paused' })}
-              onTimeUpdate={(e) => {
-                // Only sync time, preserve current play/pause state
-                const currentTime = e.currentTarget.currentTime;
-                const isPlaying = !e.currentTarget.paused;
-                syncState({ 
-                  currentTime, 
-                  isPlaying,
-                  action: isPlaying ? (localStateRef.current.isPlaying ? '' : 'started playing') : 'paused'
-                });
+              onPlay={() => {
+                if (!localStateRef.current.isPlaying) {
+                  syncState({ isPlaying: true, action: 'started playing' });
+                }
+              }}
+              onPause={() => {
+                if (localStateRef.current.isPlaying) {
+                  syncState({ isPlaying: false, action: 'paused' });
+                }
               }}
             >
               <source src={movieLink} />
@@ -518,12 +516,133 @@ export default function VideoPlayer({ movieLink, user }: VideoPlayerProps) {
 
         </div>
         
-        {/* Status below video */}
-        {localStateRef.current.lastUpdatedBy && (
-          <div className="text-center text-sm text-gray-500 dark:text-gray-400">
-            {getActionDescription()}
+        {/* Cloudinary controls */}
+        <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-4 max-w-4xl mx-auto">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="text-sm text-gray-600 dark:text-gray-400">
+              <p className="font-medium">Cloudinary Video</p>
+              <p className="text-xs">Use controls below for synced playback</p>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              {/* Backward buttons */}
+              <button
+                onClick={async () => {
+                  if (videoRef.current) {
+                    const newTime = Math.max(0, videoRef.current.currentTime - 10);
+                    await syncState({ currentTime: newTime, isPlaying: true, action: `skipped to ${formatTime(newTime)}` });
+                    videoRef.current.currentTime = newTime;
+                    videoRef.current.play();
+                  }
+                }}
+                className="px-3 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
+                title="Back 10s"
+              >
+                ⏪10s
+              </button>
+              <button
+                onClick={async () => {
+                  if (videoRef.current) {
+                    const newTime = Math.max(0, videoRef.current.currentTime - 30);
+                    await syncState({ currentTime: newTime, isPlaying: true, action: `skipped to ${formatTime(newTime)}` });
+                    videoRef.current.currentTime = newTime;
+                    videoRef.current.play();
+                  }
+                }}
+                className="px-3 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
+                title="Back 30s"
+              >
+                ⏪30s
+              </button>
+              <button
+                onClick={async () => {
+                  if (videoRef.current) {
+                    const newTime = Math.max(0, videoRef.current.currentTime - 60);
+                    await syncState({ currentTime: newTime, isPlaying: true, action: `skipped to ${formatTime(newTime)}` });
+                    videoRef.current.currentTime = newTime;
+                    videoRef.current.play();
+                  }
+                }}
+                className="px-3 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
+                title="Back 1m"
+              >
+                ⏪1m
+              </button>
+              
+              {/* Play/Pause button */}
+              <button
+                onClick={async () => {
+                  if (videoRef.current) {
+                    if (videoRef.current.paused) {
+                      await syncState({ isPlaying: true, action: 'started playing' });
+                      videoRef.current.play();
+                    } else {
+                      await syncState({ isPlaying: false, action: 'paused' });
+                      videoRef.current.pause();
+                    }
+                  }
+                }}
+                className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-medium transition-colors"
+                title="Play/Pause"
+              >
+                {videoRef.current?.paused ? '▶ Play' : '⏸ Pause'}
+              </button>
+              
+              {/* Forward buttons */}
+              <button
+                onClick={async () => {
+                  if (videoRef.current) {
+                    const newTime = Math.min(videoRef.current.duration || 0, videoRef.current.currentTime + 10);
+                    await syncState({ currentTime: newTime, isPlaying: true, action: `skipped to ${formatTime(newTime)}` });
+                    videoRef.current.currentTime = newTime;
+                    videoRef.current.play();
+                  }
+                }}
+                className="px-3 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
+                title="Forward 10s"
+              >
+                10s⏩
+              </button>
+              <button
+                onClick={async () => {
+                  if (videoRef.current) {
+                    const newTime = Math.min(videoRef.current.duration || 0, videoRef.current.currentTime + 30);
+                    await syncState({ currentTime: newTime, isPlaying: true, action: `skipped to ${formatTime(newTime)}` });
+                    videoRef.current.currentTime = newTime;
+                    videoRef.current.play();
+                  }
+                }}
+                className="px-3 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
+                title="Forward 30s"
+              >
+                30s⏩
+              </button>
+              <button
+                onClick={async () => {
+                  if (videoRef.current) {
+                    const newTime = Math.min(videoRef.current.duration || 0, videoRef.current.currentTime + 60);
+                    await syncState({ currentTime: newTime, isPlaying: true, action: `skipped to ${formatTime(newTime)}` });
+                    videoRef.current.currentTime = newTime;
+                    videoRef.current.play();
+                  }
+                }}
+                className="px-3 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
+                title="Forward 1m"
+              >
+                1m⏩
+              </button>
+            </div>
           </div>
-        )}
+          
+          {/* Current synced state */}
+          {localStateRef.current.lastUpdatedBy && (
+            <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+              <div className="text-center text-sm text-gray-500 dark:text-gray-400">
+                {getActionDescription()}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     );
   }
