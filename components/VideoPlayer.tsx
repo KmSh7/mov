@@ -71,6 +71,34 @@ function getGoogleDriveEmbedUrl(url: string): string {
   return '';
 }
 
+// Helper function to convert VK Video URL to embed URL
+function getVKVideoEmbedUrl(url: string): string {
+  if (!url) return '';
+  
+  // Already in embed format
+  if (url.includes('vk.com/video_ext.php')) {
+    return url;
+  }
+  
+  // Extract video ID from various VK Video URL formats
+  let ownerId = '';
+  let videoId = '';
+  
+  // Format: https://vkvideo.ru/video-OWNER_ID_VIDEO_ID
+  // or: https://vk.com/video-OWNER_ID_VIDEO_ID
+  const vkVideoMatch = url.match(/video(-?\d+)_(\d+)/);
+  if (vkVideoMatch) {
+    ownerId = vkVideoMatch[1];
+    videoId = vkVideoMatch[2];
+  }
+  
+  if (ownerId && videoId) {
+    return `https://vk.com/video_ext.php?oid=${ownerId}&id=${videoId}&hd=2`;
+  }
+  
+  return '';
+}
+
 // Helper function to get the appropriate embed URL based on the source
 function getEmbedUrl(url: string): string {
   if (!url) return '';
@@ -83,6 +111,11 @@ function getEmbedUrl(url: string): string {
   // Check for YouTube
   if (url.includes('youtube.com') || url.includes('youtu.be')) {
     return getYouTubeEmbedUrl(url);
+  }
+  
+  // Check for VK Video
+  if (url.includes('vkvideo.ru') || url.includes('vk.com/video')) {
+    return getVKVideoEmbedUrl(url);
   }
   
   // Return as-is for other URLs (direct video links)
@@ -105,6 +138,23 @@ interface YouTubePlayer {
   addEventListener: (event: string, callback: (event: unknown) => void) => void;
 }
 
+// VK Video Player state constants
+const VK_PLAYING = 1;
+const VK_PAUSED = 2;
+const VK_BUFFERING = 3;
+const VK_ENDED = 0;
+
+// VK Video API types
+interface VKVideoPlayer {
+  playVideo: () => void;
+  pauseVideo: () => void;
+  seekTo: (seconds: number) => void;
+  getCurrentTime: () => number;
+  getPlayerState: () => number;
+  getDuration: () => number;
+  addEventListener: (event: string, callback: (event: unknown) => void) => void;
+}
+
 // Format time as MM:SS
 const formatTime = (seconds: number): string => {
   const mins = Math.floor(seconds / 60);
@@ -115,10 +165,12 @@ const formatTime = (seconds: number): string => {
 export default function VideoPlayer({ movieLink, user }: VideoPlayerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YouTubePlayer | null>(null);
+  const vkPlayerRef = useRef<VKVideoPlayer | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [embedUrl, setEmbedUrl] = useState('');
   const [isIframe, setIsIframe] = useState(false);
   const [isYouTube, setIsYouTube] = useState(false);
+  const [isVKVideo, setIsVKVideo] = useState(false);
   const [localState, setLocalState] = useState<PlaybackState>({
     currentTime: 0,
     isPlaying: false,
@@ -144,15 +196,18 @@ export default function VideoPlayer({ movieLink, user }: VideoPlayerProps) {
       setEmbedUrl('');
       setIsIframe(false);
       setIsYouTube(false);
+      setIsVKVideo(false);
       return;
     }
     const converted = getEmbedUrl(movieLink);
     setEmbedUrl(converted);
-    // Check if it's an iframe embed (YouTube or Google Drive)
+    // Check if it's an iframe embed (YouTube, Google Drive, or VK Video)
     const isYouTubeEmbed = converted.includes('youtube.com/embed');
     const isGoogleDriveEmbed = converted.includes('drive.google.com');
-    setIsIframe(isYouTubeEmbed || isGoogleDriveEmbed);
+    const isVKVideoEmbed = converted.includes('vk.com/video_ext.php');
+    setIsIframe(isYouTubeEmbed || isGoogleDriveEmbed || isVKVideoEmbed);
     setIsYouTube(isYouTubeEmbed);
+    setIsVKVideo(isVKVideoEmbed);
   }, [movieLink]);
 
   // Initialize YouTube IFrame API (only for YouTube embeds)
@@ -275,6 +330,138 @@ export default function VideoPlayer({ movieLink, user }: VideoPlayerProps) {
     return () => clearInterval(checkApi);
   }, [isYouTube, embedUrl]);
 
+  // Initialize VK Video Player (only for VK Video embeds)
+  // VK Video uses postMessage API to communicate player events
+  useEffect(() => {
+    if (!isVKVideo || !embedUrl || !containerRef.current) return;
+
+    // Set up VK Video player reference immediately when iframe is ready
+    const setupVKPlayer = () => {
+      const iframe = containerRef.current?.querySelector('iframe');
+      if (iframe && !vkPlayerRef.current) {
+        // Create a wrapper object for VK Video player
+        vkPlayerRef.current = {
+          playVideo: () => {
+            const iframe = containerRef.current?.querySelector('iframe');
+            if (iframe && iframe.contentWindow) {
+              iframe.contentWindow.postMessage(JSON.stringify({ event: 'play' }), '*');
+            }
+          },
+          pauseVideo: () => {
+            const iframe = containerRef.current?.querySelector('iframe');
+            if (iframe && iframe.contentWindow) {
+              iframe.contentWindow.postMessage(JSON.stringify({ event: 'pause' }), '*');
+            }
+          },
+          seekTo: (seconds: number) => {
+            const iframe = containerRef.current?.querySelector('iframe');
+            if (iframe && iframe.contentWindow) {
+              iframe.contentWindow.postMessage(JSON.stringify({ event: 'seek', time: seconds }), '*');
+            }
+          },
+          getCurrentTime: () => {
+            return localStateRef.current.currentTime;
+          },
+          getPlayerState: () => {
+            return localStateRef.current.isPlaying ? VK_PLAYING : VK_PAUSED;
+          },
+          getDuration: () => {
+            return 0;
+          },
+          addEventListener: (event: string, callback: (event: unknown) => void) => {
+            // VK Video events are handled via postMessage
+          }
+        };
+        setIsPlayerReady(true);
+        playerReadyRef.current = true;
+      }
+    };
+
+    // Try to set up player immediately
+    setupVKPlayer();
+
+    // Also set up after a short delay to ensure iframe is loaded
+    const setupTimeout = setTimeout(setupVKPlayer, 1000);
+
+    // VK Video uses postMessage API to communicate player events
+    const handleMessage = (event: MessageEvent) => {
+      // Only handle messages from VK Video iframe
+      if (!event.origin.includes('vk.com')) return;
+      
+      console.log('[VK Video] Received message from VK:', event.data);
+      
+      try {
+        const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+        
+        console.log('[VK Video] Parsed data:', data);
+        
+        // Handle VK Video player events
+        // VK Video sends events with an "event" field: "play", "pause", "seek", "ended", "ready"
+        if (data.event) {
+          const eventType = data.event;
+          console.log('[VK Video] Event type:', eventType);
+          
+          let isPlaying = false;
+          let action = '';
+          
+          if (eventType === 'play') {
+            isPlaying = true;
+            if (!prevStateRef.current.isPlaying) {
+              action = 'started playing';
+            }
+            console.log('[VK Video] Play event detected, isPlaying:', isPlaying);
+          } else if (eventType === 'pause') {
+            isPlaying = false;
+            action = 'paused';
+            console.log('[VK Video] Pause event detected, isPlaying:', isPlaying);
+          } else if (eventType === 'seek') {
+            // Seek event - keep current play state
+            isPlaying = prevStateRef.current.isPlaying;
+            action = `skipped to ${formatTime(data.time || 0)}`;
+            console.log('[VK Video] Seek event detected, time:', data.time);
+          } else if (eventType === 'ended') {
+            isPlaying = false;
+            action = 'ended';
+            console.log('[VK Video] Ended event detected');
+          } else if (eventType === 'ready') {
+            // Player is ready
+            console.log('[VK Video] Player ready event detected');
+            setIsPlayerReady(true);
+            playerReadyRef.current = true;
+            return;
+          }
+          
+          // Update state and sync
+          prevStateRef.current = { 
+            ...prevStateRef.current, 
+            isPlaying, 
+            currentTime: data.time || prevStateRef.current.currentTime,
+            action
+          };
+          
+          console.log('[VK Video] Syncing state:', { isPlaying, currentTime: Math.floor(data.time || prevStateRef.current.currentTime), action });
+          
+          syncState({ 
+            isPlaying, 
+            currentTime: Math.floor(data.time || prevStateRef.current.currentTime),
+            action
+          });
+        } else {
+          console.log('[VK Video] No event field in data:', data);
+        }
+      } catch (e) {
+        console.error('[VK Video] Error parsing message:', e);
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+
+    return () => {
+      window.removeEventListener('message', handleMessage);
+      clearTimeout(setupTimeout);
+    };
+  }, [isVKVideo, embedUrl]);
+
   // Poll for state updates every 2 seconds (more reliable than SSE on Vercel)
   useEffect(() => {
     
@@ -352,6 +539,56 @@ export default function VideoPlayer({ movieLink, user }: VideoPlayerProps) {
                 setIsWaitingForSync(false);
               }, 500);
             }
+            
+            // Reset local change flag after a delay to let player state stabilize
+            setTimeout(() => {
+              isLocalChangeRef.current = false;
+            }, 1000);
+          }
+          // Handle VK Video player sync
+          else if (isVKVideo && vkPlayerRef.current && playerReadyRef.current) {
+            console.log('[VK Video] Received state update from server:', state);
+            console.log('[VK Video] Current local state:', localStateRef.current);
+            console.log('[VK Video] State updated by:', state.lastUpdatedBy, 'Current user:', user);
+            
+            // Check if remote state matches current player state to avoid feedback loop
+            const currentTime = localStateRef.current.currentTime;
+            const timeMatch = Math.abs(state.currentTime - currentTime) < 2;
+            const playStateMatch = state.isPlaying === localStateRef.current.isPlaying;
+            
+            if (timeMatch && playStateMatch) {
+              console.log('[VK Video] State already matches, skipping sync');
+              prevStateRef.current = state;
+              setLocalState(state);
+              return;
+            }
+            
+            // Mark as local change BEFORE applying any remote changes
+            isLocalChangeRef.current = true;
+            
+            // Control VK Video player via postMessage
+            const iframe = containerRef.current?.querySelector('iframe');
+            if (iframe && iframe.contentWindow) {
+              // Seek to the new time
+              if (!timeMatch) {
+                console.log('[VK Video] Seeking to:', state.currentTime);
+                iframe.contentWindow.postMessage(JSON.stringify({ event: 'seek', time: state.currentTime }), '*');
+              }
+              
+              // Play or pause
+              if (!playStateMatch) {
+                if (state.isPlaying) {
+                  console.log('[VK Video] Playing video');
+                  iframe.contentWindow.postMessage(JSON.stringify({ event: 'play' }), '*');
+                } else {
+                  console.log('[VK Video] Pausing video');
+                  iframe.contentWindow.postMessage(JSON.stringify({ event: 'pause' }), '*');
+                }
+              }
+            }
+            
+            prevStateRef.current = state;
+            setLocalState(state);
             
             // Reset local change flag after a delay to let player state stabilize
             setTimeout(() => {
@@ -437,6 +674,7 @@ export default function VideoPlayer({ movieLink, user }: VideoPlayerProps) {
 
   // Handle state sync to server
   const syncState = useCallback(async (newState: Partial<PlaybackState>) => {
+    console.log('[VK Video] Syncing state to server:', newState);
     
     setIsSyncing(true);
     try {
@@ -451,6 +689,7 @@ export default function VideoPlayer({ movieLink, user }: VideoPlayerProps) {
       });
       
       const updatedState = await response.json();
+      console.log('[VK Video] State synced successfully:', updatedState);
       
 
       isLocalChangeRef.current = true;
@@ -458,7 +697,7 @@ export default function VideoPlayer({ movieLink, user }: VideoPlayerProps) {
 
       
     } catch (error) {
-      
+      console.error('[VK Video] Error syncing state:', error);
     } finally {
       setIsSyncing(false);
     }
@@ -648,6 +887,156 @@ export default function VideoPlayer({ movieLink, user }: VideoPlayerProps) {
   }
 
   const playerId = `youtube-player-${Math.random().toString(36).substr(2, 9)}`;
+
+  // Render VK Video embed as a styled iframe (similar to YouTube and Google Drive)
+  if (isVKVideo) {
+    return (
+      <div className="space-y-2">
+        <div className="relative bg-black rounded-xl overflow-hidden shadow-2xl max-w-4xl mx-auto">
+          <div className="relative w-full" style={{ paddingBottom: '56.25%' }}>
+            <iframe
+              src={embedUrl}
+              className="absolute top-0 left-0 w-full h-full"
+              allow="autoplay; encrypted-media; fullscreen"
+              allowFullScreen
+              frameBorder="0"
+            />
+          </div>
+        </div>
+        
+        {/* VK Video sync controls */}
+        <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-4 max-w-4xl mx-auto">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="text-sm text-gray-600 dark:text-gray-400">
+              <p className="font-medium">VK Video</p>
+              <p className="text-xs">Use controls below for synced playback</p>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              {/* Backward buttons */}
+              <button
+                onClick={async () => {
+                  const newTime = Math.max(0, localStateRef.current.currentTime - 10);
+                  const iframe = containerRef.current?.querySelector('iframe');
+                  if (iframe && iframe.contentWindow) {
+                    iframe.contentWindow.postMessage(JSON.stringify({ event: 'seek', time: newTime }), '*');
+                  }
+                  await syncState({ currentTime: newTime, isPlaying: localStateRef.current.isPlaying, action: `skipped to ${formatTime(newTime)}` });
+                }}
+                className="px-3 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
+                title="Back 10s"
+              >
+                ⏪10s
+              </button>
+              <button
+                onClick={async () => {
+                  const newTime = Math.max(0, localStateRef.current.currentTime - 30);
+                  const iframe = containerRef.current?.querySelector('iframe');
+                  if (iframe && iframe.contentWindow) {
+                    iframe.contentWindow.postMessage(JSON.stringify({ event: 'seek', time: newTime }), '*');
+                  }
+                  await syncState({ currentTime: newTime, isPlaying: localStateRef.current.isPlaying, action: `skipped to ${formatTime(newTime)}` });
+                }}
+                className="px-3 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
+                title="Back 30s"
+              >
+                ⏪30s
+              </button>
+              <button
+                onClick={async () => {
+                  const newTime = Math.max(0, localStateRef.current.currentTime - 60);
+                  const iframe = containerRef.current?.querySelector('iframe');
+                  if (iframe && iframe.contentWindow) {
+                    iframe.contentWindow.postMessage(JSON.stringify({ event: 'seek', time: newTime }), '*');
+                  }
+                  await syncState({ currentTime: newTime, isPlaying: localStateRef.current.isPlaying, action: `skipped to ${formatTime(newTime)}` });
+                }}
+                className="px-3 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
+                title="Back 1m"
+              >
+                ⏪1m
+              </button>
+              
+              {/* Play/Pause button */}
+              <button
+                onClick={async () => {
+                  const iframe = containerRef.current?.querySelector('iframe');
+                  if (iframe && iframe.contentWindow) {
+                    const isPlaying = localStateRef.current.isPlaying;
+                    const command = isPlaying ? { event: 'pause' } : { event: 'play' };
+                    iframe.contentWindow.postMessage(JSON.stringify(command), '*');
+                    await syncState({ isPlaying: !isPlaying, action: isPlaying ? 'paused' : 'started playing' });
+                  }
+                }}
+                className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-medium transition-colors"
+                title="Play/Pause"
+              >
+                ▶ Play / ⏸ Pause
+              </button>
+              
+              {/* Forward buttons */}
+              <button
+                onClick={async () => {
+                  const newTime = localStateRef.current.currentTime + 10;
+                  const iframe = containerRef.current?.querySelector('iframe');
+                  if (iframe && iframe.contentWindow) {
+                    iframe.contentWindow.postMessage(JSON.stringify({ event: 'seek', time: newTime }), '*');
+                  }
+                  await syncState({ currentTime: newTime, isPlaying: localStateRef.current.isPlaying, action: `skipped to ${formatTime(newTime)}` });
+                }}
+                className="px-3 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
+                title="Forward 10s"
+              >
+                10s⏩
+              </button>
+              <button
+                onClick={async () => {
+                  const newTime = localStateRef.current.currentTime + 30;
+                  const iframe = containerRef.current?.querySelector('iframe');
+                  if (iframe && iframe.contentWindow) {
+                    iframe.contentWindow.postMessage(JSON.stringify({ event: 'seek', time: newTime }), '*');
+                  }
+                  await syncState({ currentTime: newTime, isPlaying: localStateRef.current.isPlaying, action: `skipped to ${formatTime(newTime)}` });
+                }}
+                className="px-3 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
+                title="Forward 30s"
+              >
+                30s⏩
+              </button>
+              <button
+                onClick={async () => {
+                  const newTime = localStateRef.current.currentTime + 60;
+                  const iframe = containerRef.current?.querySelector('iframe');
+                  if (iframe && iframe.contentWindow) {
+                    iframe.contentWindow.postMessage(JSON.stringify({ event: 'seek', time: newTime }), '*');
+                  }
+                  await syncState({ currentTime: newTime, isPlaying: localStateRef.current.isPlaying, action: `skipped to ${formatTime(newTime)}` });
+                }}
+                className="px-3 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
+                title="Forward 1m"
+              >
+                1m⏩
+              </button>
+            </div>
+          </div>
+          
+          {/* Current synced state */}
+          {localStateRef.current.lastUpdatedBy && (
+            <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+              <div className="text-center text-sm text-gray-500 dark:text-gray-400">
+                {getActionDescription()}
+              </div>
+              {isWaitingForSync && (
+                <div className="mt-2 text-center text-xs text-yellow-600 dark:text-yellow-400">
+                  ⚠️ State updated. Please manually seek in VK Video player to sync.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   // Render Google Drive embed as a regular iframe (styled like YouTube)
   if (isIframe && !isYouTube) {
