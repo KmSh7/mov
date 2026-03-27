@@ -8,6 +8,7 @@ interface Movie {
   link: string;
   imdb: string;
   description: string;
+  thumbnail?: string;
 }
 
 interface MovieCardProps {

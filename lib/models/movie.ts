@@ -12,6 +12,7 @@ export interface Movie {
   link: string;
   imdb: string;
   description: string;
+  thumbnail?: string;
 }
 
 /**
@@ -30,7 +31,7 @@ export async function getAllMovies(): Promise<Movie[]> {
 /**
  * Add a new movie to MongoDB
  */
-export async function addMovie(name: string, link: string, imdb?: string, description?: string): Promise<Movie> {
+export async function addMovie(name: string, link: string, imdb?: string, description?: string, thumbnail?: string): Promise<Movie> {
   const db = await getDatabase();
   const collection = db.collection<Movie>(MOVIES_COLLECTION);
   
@@ -42,7 +43,8 @@ export async function addMovie(name: string, link: string, imdb?: string, descri
     name,
     link,
     imdb: imdb || '',
-    description: description || ''
+    description: description || '',
+    thumbnail: thumbnail || ''
   };
   
   await collection.insertOne(newMovie);

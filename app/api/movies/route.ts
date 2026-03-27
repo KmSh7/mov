@@ -18,7 +18,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { name, link, imdb, description } = body;
+    const { name, link, imdb, description, thumbnail } = body;
 
     // Validate required fields
     if (!name || !link) {
@@ -29,7 +29,7 @@ export async function POST(request: Request) {
     }
 
     // Add movie to MongoDB
-    const newMovie = await addMovie(name, link, imdb, description);
+    const newMovie = await addMovie(name, link, imdb, description, thumbnail);
 
     return NextResponse.json(newMovie, { status: 201 });
   } catch (error) {

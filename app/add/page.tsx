@@ -10,7 +10,8 @@ export default function AddMovie() {
     name: '',
     link: '',
     imdb: '',
-    description: ''
+    description: '',
+    thumbnail: ''
   });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -164,6 +165,25 @@ export default function AddMovie() {
                 placeholder="Short description of the movie"
                 className="w-full px-4 py-3 rounded-lg border-2 border-gray-200 dark:border-gray-600 focus:border-orange-500 focus:outline-none dark:bg-gray-700 dark:text-white transition-colors resize-none"
               />
+            </div>
+
+            {/* Thumbnail URL */}
+            <div>
+              <label htmlFor="thumbnail" className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                Thumbnail URL
+              </label>
+              <input
+                type="url"
+                id="thumbnail"
+                name="thumbnail"
+                value={formData.thumbnail}
+                onChange={handleChange}
+                placeholder="https://example.com/thumbnail.jpg"
+                className="w-full px-4 py-3 rounded-lg border-2 border-gray-200 dark:border-gray-600 focus:border-orange-500 focus:outline-none dark:bg-gray-700 dark:text-white transition-colors"
+              />
+              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                <p>Optional: URL to a thumbnail image for the movie</p>
+              </div>
             </div>
 
             {/* Submit Button */}

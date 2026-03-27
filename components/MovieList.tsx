@@ -10,6 +10,7 @@ interface Movie {
   link: string;
   imdb: string;
   description: string;
+  thumbnail?: string;
 }
 
 export default function MovieList() {
