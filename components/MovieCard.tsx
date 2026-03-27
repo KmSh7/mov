@@ -28,12 +28,22 @@ export default function MovieCard({ movie }: MovieCardProps) {
       className="block group cursor-pointer"
     >
       <div className="bg-white dark:bg-gray-800 rounded-xl overflow-hidden shadow-md hover:shadow-2xl transition-all duration-300 transform group-hover:-translate-y-1 border border-gray-200 dark:border-gray-700">
-        {/* Movie Poster Placeholder */}
+        {/* Movie Poster/Thumbnail */}
         <div className="relative h-40 bg-gradient-to-br from-gray-800 via-gray-900 to-gray-800 flex items-center justify-center overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-t from-orange-500/20 to-transparent"></div>
-          <div className="text-5xl opacity-40 group-hover:opacity-60 transition-opacity transform group-hover:scale-110">
-            🎬
-          </div>
+          {movie.thumbnail ? (
+            <img
+              src={movie.thumbnail}
+              alt={movie.name}
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+          ) : (
+            <>
+              <div className="absolute inset-0 bg-gradient-to-t from-orange-500/20 to-transparent"></div>
+              <div className="text-5xl opacity-40 group-hover:opacity-60 transition-opacity transform group-hover:scale-110">
+                🎬
+              </div>
+            </>
+          )}
           <div className="absolute top-3 right-3 bg-orange-500 text-white text-xs font-semibold px-2.5 py-1 rounded-full">
             Watch
           </div>
